@@ -46,6 +46,13 @@ type WebRoute = {
   transformArgs?: (
     args?: Record<string, unknown>,
   ) => Record<string, unknown> | undefined;
+  /**
+   * Name of an arg whose value is appended as a single path segment
+   * (URL-encoded). Used by routes whose server handler is keyed on
+   * something other than `id` (e.g. `/agents/{agent}/...`).
+   * Takes precedence over the implicit `id` fallback below.
+   */
+  pathParam?: string;
 };
 
 /**
@@ -111,6 +118,42 @@ const WEB_PATH: Record<string, WebRoute> = {
       dry_run: false,
     }),
   },
+
+  // ── batch 3: per-agent local skill directory ──
+  // GET: path segment is the agent key.
+  get_global_local_skills: {
+    method: "GET",
+    path: "/agents/{agent}/local-skills",
+    pathParam: "agent",
+  },
+  // POST: body is `{relative_path}` (single) or `{relative_paths}` (batch).
+  // The server treats single-element batches identically.
+  import_global_local_skill_to_center: {
+    method: "POST",
+    path: "/agents/{agent}/local-skills/import",
+    pathParam: "agent",
+    transformArgs: (a) => ({
+      relative_path: a?.skillRelativePath as string,
+    }),
+  },
+  delete_global_local_skill: {
+    method: "POST",
+    path: "/agents/{agent}/local-skills/delete",
+    pathParam: "agent",
+    transformArgs: (a) => ({
+      relative_path: a?.skillRelativePath as string,
+    }),
+  },
+  update_global_local_skill_from_center: {
+    method: "POST",
+    path: "/agents/{agent}/local-skills/update",
+    pathParam: "agent",
+    transformArgs: (a) => ({
+      relative_paths: a?.skillRelativePath
+        ? [a.skillRelativePath as string]
+        : [],
+    }),
+  },
 };
 
 async function webFetch<T>(
@@ -136,11 +179,15 @@ async function webFetch<T>(
     init.body = JSON.stringify(transformed ?? {});
   } else if (
     route.method === "GET" &&
-    transformed &&
-    typeof transformed.id === "string"
+    transformed
   ) {
-    // `get_skill` uses the id as a path segment, not a JSON field.
-    url += `/${encodeURIComponent(transformed.id)}`;
+    // Path-segment extraction. `pathParam` wins when set; otherwise we
+    // fall back to `id` for backwards compatibility with `get_skill`.
+    const segmentKey = route.pathParam ?? "id";
+    const segment = transformed[segmentKey];
+    if (typeof segment === "string") {
+      url += `/${encodeURIComponent(segment)}`;
+    }
   }
 
   const res = await fetch(url, init);
@@ -1023,16 +1070,16 @@ export const slugifySkillNames = (names: string[]) =>
 // ── Agent Local Workspace ──
 
 export const getGlobalLocalSkills = (agent: string) =>
-  invoke<ProjectSkill[]>("get_global_local_skills", { agent });
+  callInvoke<ProjectSkill[]>("get_global_local_skills", { agent });
 
 export const getGlobalLocalSkillDocument = (agent: string, skillRelativePath: string) =>
   invoke<ProjectSkillDocument>("get_global_local_skill_document", { agent, skillRelativePath });
 
 export const importGlobalLocalSkillToCenter = (agent: string, skillRelativePath: string) =>
-  invoke<void>("import_global_local_skill_to_center", { agent, skillRelativePath });
+  callInvoke<void>("import_global_local_skill_to_center", { agent, skillRelativePath });
 
 export const updateGlobalLocalSkillFromCenter = (agent: string, skillRelativePath: string) =>
-  invoke<void>("update_global_local_skill_from_center", { agent, skillRelativePath });
+  callInvoke<void>("update_global_local_skill_from_center", { agent, skillRelativePath });
 
 export const deleteGlobalLocalSkill = (agent: string, skillRelativePath: string) =>
-  invoke<void>("delete_global_local_skill", { agent, skillRelativePath });
+  callInvoke<void>("delete_global_local_skill", { agent, skillRelativePath });
