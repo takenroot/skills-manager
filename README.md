@@ -241,6 +241,36 @@ Official releases also publish standalone CLI binaries for macOS arm64/x64, Wind
 
 The CLI and desktop app share the same SQLite database and repository lock. The app's filesystem watcher normally refreshes after CLI metadata or deployment changes. If the app was suspended while a command ran, trigger one manual refresh.
 
+### Web mode (preview)
+
+For headless / remote workflows where the desktop shell is not available, the same Rust core also serves a **read-only HTTP API** via the `skills-manager-web` binary. The frontend can then be served by a plain `npm run dev` (Vite proxies `/skillsmanager/*` to the web binary).
+
+```bash
+# 1. build the web binary (one-off)
+npm run cli:build
+
+# 2. start it on localhost:8766
+./src-tauri/target/debug/skills-manager-web --host 127.0.0.1 --port 8766
+
+# 3. in another shell, start the Vite dev server
+npm run dev   # http://127.0.0.1:1420
+```
+
+The web binary accepts the same `--skills-root <path>` as the CLI for operating on an external repo. The bundled endpoints are read-only:
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/health` | `{"ok":true, server, version}` |
+| `GET` | `/api/tools` | 53 adapters, with `installed` / `enabled` / `category` |
+| `GET` | `/api/skills` | Central library, with targets / tags / presets |
+| `GET` | `/api/skills/{id}` | Skill by id or name |
+| `GET` | `/api/presets` | All presets |
+| `GET` | `/api/presets/active` | The currently-active preset, if any |
+
+Errors come back as `{"ok": false, "code": "...", "message": "..."}` with `ErrorKind` mapped to HTTP status (`not_found` → 404, `invalid_input` → 400, others → 500). The shape on the wire is the same JSON the desktop GUI already consumes — the frontend's `src/lib/tauri.ts` detects `window.__TAURI_INTERNALS__` and switches between `invoke()` and `fetch()` accordingly.
+
+**Status**: read-only MVP. Install / deploy / remove / tag still go through `skills-manager-cli` from the same shell. Do not expose `0.0.0.0` without a reverse proxy — the listener does not authenticate.
+
 ### Build
 
 ```bash
