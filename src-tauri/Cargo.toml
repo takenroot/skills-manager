@@ -54,6 +54,8 @@ rand = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
 notify = "6.1.1"
 clap = { version = "4.5", features = ["derive"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
 
 [target.'cfg(windows)'.dependencies]
 junction = "2"

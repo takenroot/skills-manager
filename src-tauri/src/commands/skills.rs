@@ -1785,7 +1785,7 @@ pub async fn detach_local_skill_source(
     .await?
 }
 
-fn managed_skill_to_dto(
+pub(crate) fn managed_skill_to_dto(
     store: &SkillStore,
     skill: SkillRecord,
     all_targets: &[SkillTargetRecord],

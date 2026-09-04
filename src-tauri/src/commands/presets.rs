@@ -43,7 +43,7 @@ pub struct PresetDto {
 
 static GET_PRESETS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
 
-fn preset_dto(store: &SkillStore, scenario: ScenarioRecord) -> PresetDto {
+pub(crate) fn preset_dto(store: &SkillStore, scenario: ScenarioRecord) -> PresetDto {
     let skill_count = store.count_skills_for_scenario(&scenario.id).unwrap_or(0);
     PresetDto {
         id: scenario.id,
