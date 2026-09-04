@@ -13,5 +13,6 @@
 
 pub mod handlers;
 pub mod server;
+pub mod write_handlers;
 
 pub use server::run_server;

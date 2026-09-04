@@ -7,41 +7,119 @@ import { invoke } from "@tauri-apps/api/core";
 // When we detect web mode, every command falls back to HTTP against the
 // `skills-manager-web` binary running on 127.0.0.1:8766 (proxied through
 // Vite at `/skillsmanager/*` in dev). See vite.config.ts.
-//
-// MVP scope: read-only commands are wired up. Write-side commands still go
-//// through `skills-manager-cli` — calling them throws "unsupported in web mode".
 
 const isTauri =
   typeof window !== "undefined" &&
   (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
     undefined;
 
-/** Tauri command → path under `/skillsmanager` in web mode. */
-const WEB_PATH: Record<string, string> = {
-  get_tool_status: "/tools",
-  get_managed_skills: "/skills",
-  get_skill: "/skills",
-  get_presets: "/presets",
-  get_active_preset: "/presets/active",
-  health: "/health",
+type WebRoute = {
+  /** HTTP method. POST endpoints get a JSON body; GET endpoints ignore args except `id`. */
+  method: "GET" | "POST";
+  /** Path under `/skillsmanager` (Vite proxy strips that prefix). */
+  path: string;
+  /** Optional adapter from Tauri arg shape → web body / query shape. */
+  transformArgs?: (
+    args?: Record<string, unknown>,
+  ) => Record<string, unknown> | undefined;
+};
+
+/**
+ * Tauri command → web route.
+ *
+ * The Tauri command name (camelCase, what `invoke` takes) maps to the web
+ * path; for write-side commands the shapes diverge (Tauri often takes
+ * single items, the web batch endpoint takes arrays) so we translate
+ * inline with `transformArgs`.
+ */
+const WEB_PATH: Record<string, WebRoute> = {
+  // ── GET (read surface) ──
+  get_tool_status: { method: "GET", path: "/tools" },
+  get_managed_skills: { method: "GET", path: "/skills" },
+  get_skill: { method: "GET", path: "/skills" }, // appends `/{id}` below
+  get_presets: { method: "GET", path: "/presets" },
+  get_active_preset: { method: "GET", path: "/presets/active" },
+  health: { method: "GET", path: "/health" },
+
+  // ── POST (write surface, batch 2) ──
+  // local-path install only — git/skillssh stay CLI-only.
+  install_local: { method: "POST", path: "/skills/install" },
+  // Tauri exposes `delete_managed_skill` (single) and `delete_managed_skills`
+  // (batch); both go to the same web endpoint.
+  delete_managed_skill: {
+    method: "POST",
+    path: "/skills/remove",
+    transformArgs: (a) => ({ references: a ? [a.skillId as string] : [] }),
+  },
+  delete_managed_skills: {
+    method: "POST",
+    path: "/skills/remove",
+    transformArgs: (a) => ({
+      references: Array.isArray(a?.skillIds)
+        ? (a!.skillIds as string[])
+        : [],
+    }),
+  },
+  set_skill_tags: {
+    method: "POST",
+    path: "/skills/tag",
+    transformArgs: (a) => ({
+      reference: a?.skillId as string,
+      tags: Array.isArray(a?.tags) ? (a!.tags as string[]) : [],
+    }),
+  },
+  // Tauri single-skill deploy; web batch endpoint expects arrays.
+  sync_skill_to_tool: {
+    method: "POST",
+    path: "/skills/deploy",
+    transformArgs: (a) => ({
+      references: a ? [a.skillId as string] : [],
+      agents: a ? [a.tool as string] : [],
+      dry_run: false,
+    }),
+  },
+  unsync_skill_from_tool: {
+    method: "POST",
+    path: "/skills/undeploy",
+    transformArgs: (a) => ({
+      references: a ? [a.skillId as string] : [],
+      agents: a ? [a.tool as string] : [],
+      dry_run: false,
+    }),
+  },
 };
 
 async function webFetch<T>(
   commandName: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  const path = WEB_PATH[commandName];
-  if (!path) {
+  const route = WEB_PATH[commandName];
+  if (!route) {
     throw new Error(
       `command "${commandName}" has no web-mode binding yet; use skills-manager-cli`,
     );
   }
-  // The Tauri command name is the path. For commands that take an `id` arg
-  // (e.g. get_skill), append it as a sub-segment so the URL matches the
-  // server's `/skills/{id}` route.
-  const idArg = args && typeof args.id === "string" ? args.id : undefined;
-  const url = idArg ? `/skillsmanager${path}/${encodeURIComponent(idArg)}` : `/skillsmanager${path}`;
-  const res = await fetch(url);
+
+  const transformed = route.transformArgs
+    ? route.transformArgs(args)
+    : args;
+
+  let url = `/skillsmanager${route.path}`;
+  const init: RequestInit = { method: route.method };
+
+  if (route.method === "POST") {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(transformed ?? {});
+  } else if (
+    route.method === "GET" &&
+    transformed &&
+    typeof transformed.id === "string"
+  ) {
+    // `get_skill` uses the id as a path segment, not a JSON field.
+    url += `/${encodeURIComponent(transformed.id)}`;
+  }
+
+  const res = await fetch(url, init);
   if (!res.ok) {
     const err = await res
       .json()
@@ -313,7 +391,7 @@ export const getSkillSourceDiff = (skillId: string) =>
   invoke<SkillSourceDiff>("get_skill_source_diff", { skillId });
 
 export const deleteManagedSkill = (skillId: string) =>
-  invoke<void>("delete_managed_skill", { skillId });
+  callInvoke<void>("delete_managed_skill", { skillId });
 
 export interface BatchDeleteSkillsResult {
   deleted: number;
@@ -321,10 +399,10 @@ export interface BatchDeleteSkillsResult {
 }
 
 export const deleteManagedSkills = (skillIds: string[]) =>
-  invoke<BatchDeleteSkillsResult>("delete_managed_skills", { skillIds });
+  callInvoke<BatchDeleteSkillsResult>("delete_managed_skills", { skillIds });
 
 export const installLocal = (sourcePath: string, name?: string) =>
-  invoke<void>("install_local", { sourcePath, name: name || null });
+  callInvoke<void>("install_local", { sourcePath, name: name || null });
 
 export const installGit = (repoUrl: string, name?: string) =>
   invoke<void>("install_git", { repoUrl, name: name || null });
@@ -452,7 +530,7 @@ export const batchImportFolder = (folderPath: string) =>
 export const getAllTags = () => invoke<string[]>("get_all_tags");
 
 export const setSkillTags = (skillId: string, tags: string[]) =>
-  invoke<void>("set_skill_tags", { skillId, tags });
+  callInvoke<void>("set_skill_tags", { skillId, tags });
 
 export const renameTag = (oldName: string, newName: string) =>
   invoke<void>("rename_tag", { oldName, newName });
@@ -463,10 +541,10 @@ export const deleteTag = (name: string) =>
 // ── Sync ──
 
 export const syncSkillToTool = (skillId: string, tool: string) =>
-  invoke<void>("sync_skill_to_tool", { skillId, tool });
+  callInvoke<void>("sync_skill_to_tool", { skillId, tool });
 
 export const unsyncSkillFromTool = (skillId: string, tool: string) =>
-  invoke<void>("unsync_skill_from_tool", { skillId, tool });
+  callInvoke<void>("unsync_skill_from_tool", { skillId, tool });
 
 export const getSkillToolToggles = (skillId: string, presetId: string) =>
   invoke<SkillToolToggle[]>("get_skill_tool_toggles", { skillId, presetId });

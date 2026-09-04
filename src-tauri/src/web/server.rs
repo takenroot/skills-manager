@@ -13,6 +13,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::core::skill_store::SkillStore;
 use crate::web::handlers;
+use crate::web::write_handlers;
 
 /// Bind and serve. Returns only on failure; Ctrl+C / SIGTERM kills the
 /// tokio runtime the caller is expected to be running under (the
@@ -25,6 +26,10 @@ pub async fn run_server(host: &str, port: u16, store: Arc<SkillStore>) -> Result
         .route("/api/skills/{id}", get(handlers::get_skill))
         .route("/api/presets", get(handlers::list_presets))
         .route("/api/presets/active", get(handlers::get_active_preset))
+        // Write surface (MVP batch 2): install / deploy / undeploy / remove / tag.
+        // Mounted under the same Router so the same axum state + CORS layer
+        // apply uniformly. Auth-free by design — see write_handlers.rs header.
+        .merge(write_handlers::write_routes())
         .with_state(store)
         // CORS for the Vite dev server on :1420 (the project's Tauri dev
         // port). Tighten this if the server is ever exposed beyond localhost.
