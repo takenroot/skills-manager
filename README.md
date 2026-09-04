@@ -267,9 +267,19 @@ The web binary accepts the same `--skills-root <path>` as the CLI for operating 
 | `GET` | `/api/presets` | All presets |
 | `GET` | `/api/presets/active` | The currently-active preset, if any |
 
+Plus the write surface (batch 2):
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/api/skills/deploy` | `{references, agents, dry_run?}` | Wraps `apply_skills_to_tools(Add)` |
+| `POST` | `/api/skills/undeploy` | `{references, agents, dry_run?}` | Wraps `apply_skills_to_tools(Remove)`; empty `agents` = "all currently-deployed" |
+| `POST` | `/api/skills/install` | `{source_path, name?}` | **Local install only.** Git / skills.sh installs need network IO and stay CLI-only for now. |
+| `POST` | `/api/skills/remove` | `{references}` | Required reference is the `skillId` (uuid) for the single-skill CLI command; for the batch command it's the `skillIds` array. |
+| `POST` | `/api/skills/tag` | `{reference, tags}` | Replaces the tag set (does not merge). |
+
 Errors come back as `{"ok": false, "code": "...", "message": "..."}` with `ErrorKind` mapped to HTTP status (`not_found` → 404, `invalid_input` → 400, others → 500). The shape on the wire is the same JSON the desktop GUI already consumes — the frontend's `src/lib/tauri.ts` detects `window.__TAURI_INTERNALS__` and switches between `invoke()` and `fetch()` accordingly.
 
-**Status**: read-only MVP. Install / deploy / remove / tag still go through `skills-manager-cli` from the same shell. Do not expose `0.0.0.0` without a reverse proxy — the listener does not authenticate.
+**Status**: MVP — install / deploy / undeploy / remove / tag now work in web mode. Still CLI-only: git init / clone / push / pull / commit, skill `update` / `check`, preset create / update / delete, settings, custom-tool management. Do not expose `0.0.0.0` without a reverse proxy — the listener does not authenticate.
 
 ### Build
 
