@@ -277,9 +277,18 @@ Plus the write surface (batch 2):
 | `POST` | `/api/skills/remove` | `{references}` | Required reference is the `skillId` (uuid) for the single-skill CLI command; for the batch command it's the `skillIds` array. |
 | `POST` | `/api/skills/tag` | `{reference, tags}` | Replaces the tag set (does not merge). |
 
+Plus the per-agent local skill directory surface (batch 3) — `{key}` is the agent key (`claude_code`, `codex`, ...):
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `GET` | `/api/agents/{key}/local-skills` | — | Lists the agent's skills dir (e.g. `~/.claude/skills/`). Each entry has `name`, `relative_path`, `has_skill_md`, `is_managed`, `managed_skill_id`, `content_hash`. Path validation: rejects absolute paths and `..` components. |
+| `POST` | `/api/agents/{key}/local-skills/import` | `{relative_path}` or `{relative_paths}` | Copy an agent-local skill into the central library. Wraps `installer::install_from_local` + `store_installed_skill_unlocked`. |
+| `POST` | `/api/agents/{key}/local-skills/delete` | `{relative_path}` or `{relative_paths}` | Remove agent-local skill directory. Refuses to delete anything outside the agent's `skills_dir` (lexical containment check — symlinks to the central library are OK). |
+| `POST` | `/api/agents/{key}/local-skills/update` | `{relative_paths}` | Push the central-library copy of these skills into the agent's dir (Copy mode, `ReplacePolicy::NoClobber` by default; `force: true` to overwrite). |
+
 Errors come back as `{"ok": false, "code": "...", "message": "..."}` with `ErrorKind` mapped to HTTP status (`not_found` → 404, `invalid_input` → 400, others → 500). The shape on the wire is the same JSON the desktop GUI already consumes — the frontend's `src/lib/tauri.ts` detects `window.__TAURI_INTERNALS__` and switches between `invoke()` and `fetch()` accordingly.
 
-**Status**: MVP — install / deploy / undeploy / remove / tag now work in web mode. Still CLI-only: git init / clone / push / pull / commit, skill `update` / `check`, preset create / update / delete, settings, custom-tool management. Do not expose `0.0.0.0` without a reverse proxy — the listener does not authenticate.
+**Status**: MVP — install / deploy / undeploy / remove / tag plus the per-agent local skill directory surface (list / import / delete / update) work in web mode. Still CLI-only: git init / clone / push / pull / commit, skill `update` / `check`, preset create / update / delete, settings, custom-tool management, project workspaces. Do not expose `0.0.0.0` without a reverse proxy — the listener does not authenticate.
 
 ### Build
 
