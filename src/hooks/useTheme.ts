@@ -48,12 +48,17 @@ export function useTheme() {
 
   // Load from Tauri settings on mount
   useEffect(() => {
-    api.getSettings("theme").then((v) => {
-      if (v === "light" || v === "dark" || v === "system") {
-        setThemeState(v);
-        localStorage.setItem(STORAGE_KEY, v);
-      }
-    });
+    api
+      .getSettings("theme")
+      .then((v) => {
+        if (v === "light" || v === "dark" || v === "system") {
+          setThemeState(v);
+          localStorage.setItem(STORAGE_KEY, v);
+        }
+      })
+      // In web mode `getSettings` throws "no web-mode binding"; the local
+      // theme already drives the UI so the rejection is silent.
+      .catch(() => {});
   }, []);
 
   const setTheme = useCallback((next: Theme) => {

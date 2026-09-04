@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as invokeTauri } from "@tauri-apps/api/core";
 import type { EventCallback } from "@tauri-apps/api/event";
 
 // ── Mode detection ─────────────────────────────────────────────────────
@@ -13,6 +13,29 @@ const isTauri =
   typeof window !== "undefined" &&
   (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
     undefined;
+
+/**
+ * `invoke` with a web-mode fallback.
+ *
+ * In Tauri runtime, `invokeTauri` goes through the IPC bridge and reaches
+ * Rust commands. In a plain browser that bridge is `undefined`, so
+ * `@tauri-apps/api/core`'s invoke would crash with
+ *   `Cannot read properties of undefined (reading 'invoke')`
+ * for every command we did not specifically wire through `callInvoke`.
+ *
+ * The fallback below throws a clear "no web-mode binding" error instead,
+ * so existing call sites get a sensible message in the toast/console
+ * rather than a confusing internals crash. `callInvoke` is the
+ * intended API for new code: it falls through to this same `invoke`
+ * when running inside Tauri.
+ */
+const invoke: typeof invokeTauri = isTauri
+  ? invokeTauri
+  : (async (name: string) => {
+      throw new Error(
+        `command "${name}" has no web-mode binding yet; use skills-manager-cli`,
+      );
+    }) as typeof invokeTauri;
 
 type WebRoute = {
   /** HTTP method. POST endpoints get a JSON body; GET endpoints ignore args except `id`. */
