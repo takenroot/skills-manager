@@ -48,7 +48,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "../lib/tauri";
 import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
 import { check as checkUpdater } from "@tauri-apps/plugin-updater";
 import { open as dialogOpen, confirm as dialogConfirm } from "@tauri-apps/plugin-dialog";
@@ -446,7 +446,7 @@ export function Settings() {
   // avoids a follow-up DB roundtrip.
   useEffect(() => {
     type AutoUpdatedPayload = { ran_at?: string };
-    const unlistenPromise = listen<AutoUpdatedPayload>("skills-auto-updated", (event) => {
+    const unlistenPromise = safeListen<AutoUpdatedPayload>("skills-auto-updated", (event) => {
       const ranAt = event.payload?.ran_at;
       if (ranAt) {
         setAutoUpdateLastRun(ranAt);

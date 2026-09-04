@@ -18,7 +18,7 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "../lib/tauri";
 import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
@@ -227,7 +227,7 @@ export function Backup() {
 
   // Live updates from the background auto-backup rounds.
   useEffect(() => {
-    const unlistenPromise = listen<{ ok: boolean; pending: boolean; error: string | null }>(
+    const unlistenPromise = safeListen<{ ok: boolean; pending: boolean; error: string | null }>(
       "backup-auto-completed",
       (event) => {
         setBackupError(event.payload.error ? mapGitError(event.payload.error) : null);

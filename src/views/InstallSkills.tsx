@@ -32,7 +32,7 @@ import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } f
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "../lib/tauri";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
 
@@ -362,7 +362,7 @@ export function InstallSkills() {
 
       const toastId = toast.loading(t("install.local.batchImporting"));
 
-      unlisten = await listen<{ current: number; total: number; name: string }>(
+      unlisten = await safeListen<{ current: number; total: number; name: string }>(
         "batch-import-progress",
         (event) => {
           const { current, total, name } = event.payload;
@@ -420,7 +420,7 @@ export function InstallSkills() {
     let unlisten: (() => void) | null = null;
 
     try {
-      unlisten = await listen<{ skill_id: string; phase: string; detail?: string }>(
+      unlisten = await safeListen<{ skill_id: string; phase: string; detail?: string }>(
         "install-progress",
         (event) => {
           if (event.payload.skill_id !== cancelKey) return;
@@ -472,7 +472,7 @@ export function InstallSkills() {
     let unlisten: (() => void) | null = null;
 
     try {
-      unlisten = await listen<{ skill_id: string; phase: string; detail?: string }>(
+      unlisten = await safeListen<{ skill_id: string; phase: string; detail?: string }>(
         "install-progress",
         (event) => {
           if (event.payload.skill_id !== url) return;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "../lib/tauri";
 import { CloseActionDialog } from "./CloseActionDialog";
 import * as api from "../lib/tauri";
 
@@ -7,7 +7,7 @@ export function CloseActionGuard() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
-    const unlisten = listen("window-close-requested", async () => {
+    const unlisten = safeListen("window-close-requested", async () => {
       const tray = await api.getSettings("show_tray_icon");
       const trayEnabled = (() => {
         const normalized = (tray ?? "true").trim().toLowerCase();

@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "../lib/tauri";
 import type { AppUpdateInfo, ManagedSkill, Project, Preset, ToolInfo } from "../lib/tauri";
 import * as api from "../lib/tauri";
 import i18n from "../i18n";
@@ -206,7 +206,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [refreshAppData]);
 
   useEffect(() => {
-    const unlistenPromise = listen("tray-open-updates", () => {
+    const unlistenPromise = safeListen("tray-open-updates", () => {
       setDetailSkillId(null);
       if (!window.location.pathname.endsWith("/my-skills")) {
         window.history.pushState(null, "", "/my-skills");
@@ -226,7 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const unlistenPromise = listen("app-files-changed", () => {
+    const unlistenPromise = safeListen("app-files-changed", () => {
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
@@ -418,7 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Refresh after a background auto-update round (Rust scheduler) or the
   // tray "check for updates" action finishes.
   useEffect(() => {
-    const unlistenPromise = listen("skills-auto-updated", async () => {
+    const unlistenPromise = safeListen("skills-auto-updated", async () => {
       try {
         const skills = await api.getManagedSkills();
         setManagedSkills(skills);

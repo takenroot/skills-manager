@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { EventCallback } from "@tauri-apps/api/event";
 
 // ── Mode detection ─────────────────────────────────────────────────────
 //
@@ -137,6 +138,41 @@ async function callInvoke<T>(
     return invoke<T>(name, args);
   }
   return webFetch<T>(name, args);
+}
+
+// ── Event bus fallback ──────────────────────────────────────────────────
+//
+// `@tauri-apps/api/event`'s `listen` / `emit` both go through the Tauri
+// IPC bridge internally — which is `undefined` in a plain browser, so
+// calling them crashes the entire view tree (AppContext's mount-time
+// listen was the original offender: every page that imported the
+// context threw `Cannot read properties of undefined (reading 'invoke')`).
+//
+// `safeListen` / `safeEmit` no-op in web mode and forward to the real
+// Tauri API when the desktop shell is in use. Drop-in replacement: the
+// returned `UnlistenFn` is always a real function (a no-op closure in
+// web mode), so callers don't have to null-check.
+
+export type UnlistenFn = () => void;
+
+/** Subscribe to a Tauri event. No-op when running in a plain browser. */
+export async function safeListen<T>(
+  event: string,
+  handler: EventCallback<T>,
+): Promise<UnlistenFn> {
+  if (!isTauri) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<T>(event, handler);
+}
+
+/** Emit a Tauri event. No-op when running in a plain browser. */
+export async function safeEmit<T>(
+  event: string,
+  payload?: T,
+): Promise<void> {
+  if (!isTauri) return;
+  const { emit } = await import("@tauri-apps/api/event");
+  await emit(event, payload);
 }
 
 // ── Types ──
