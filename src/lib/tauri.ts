@@ -1,5 +1,66 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// ── Mode detection ─────────────────────────────────────────────────────
+//
+// Tauri 2 injects `window.__TAURI_INTERNALS__` into its webview. A plain
+// browser (Vite dev server, production static hosting) doesn't have it.
+// When we detect web mode, every command falls back to HTTP against the
+// `skills-manager-web` binary running on 127.0.0.1:8766 (proxied through
+// Vite at `/skillsmanager/*` in dev). See vite.config.ts.
+//
+// MVP scope: read-only commands are wired up. Write-side commands still go
+//// through `skills-manager-cli` — calling them throws "unsupported in web mode".
+
+const isTauri =
+  typeof window !== "undefined" &&
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+    undefined;
+
+/** Tauri command → path under `/skillsmanager` in web mode. */
+const WEB_PATH: Record<string, string> = {
+  get_tool_status: "/tools",
+  get_managed_skills: "/skills",
+  get_skill: "/skills",
+  get_presets: "/presets",
+  get_active_preset: "/presets/active",
+  health: "/health",
+};
+
+async function webFetch<T>(
+  commandName: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  const path = WEB_PATH[commandName];
+  if (!path) {
+    throw new Error(
+      `command "${commandName}" has no web-mode binding yet; use skills-manager-cli`,
+    );
+  }
+  // The Tauri command name is the path. For commands that take an `id` arg
+  // (e.g. get_skill), append it as a sub-segment so the URL matches the
+  // server's `/skills/{id}` route.
+  const idArg = args && typeof args.id === "string" ? args.id : undefined;
+  const url = idArg ? `/skillsmanager${path}/${encodeURIComponent(idArg)}` : `/skillsmanager${path}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res
+      .json()
+      .catch(() => ({ message: res.statusText, code: res.status }));
+    throw new Error(err.message ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function callInvoke<T>(
+  name: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  if (isTauri) {
+    return invoke<T>(name, args);
+  }
+  return webFetch<T>(name, args);
+}
+
 // ── Types ──
 
 export type ToolCategory = "coding" | "lobster";
@@ -185,7 +246,7 @@ export interface ProjectSkillDocument {
 
 // ── Tools ──
 
-export const getToolStatus = () => invoke<ToolInfo[]>("get_tool_status");
+export const getToolStatus = () => callInvoke<ToolInfo[]>("get_tool_status");
 
 export const setToolEnabled = (key: string, enabled: boolean) =>
   invoke<void>("set_tool_enabled", { key, enabled });
@@ -235,7 +296,7 @@ export const removeCustomTool = (key: string) =>
 // ── Skills ──
 
 export const getManagedSkills = () =>
-  invoke<ManagedSkill[]>("get_managed_skills");
+  callInvoke<ManagedSkill[]>("get_managed_skills");
 
 export const getSkillsForPreset = (presetId: string) =>
   invoke<ManagedSkill[]>("get_skills_for_preset", {
@@ -719,10 +780,10 @@ export const gitBackupRestoreVersion = (tag: string) =>
 
 // ── Presets ──
 
-export const getPresets = () => invoke<Preset[]>("get_presets");
+export const getPresets = () => callInvoke<Preset[]>("get_presets");
 
 export const getActivePreset = () =>
-  invoke<Preset | null>("get_active_preset");
+  callInvoke<Preset | null>("get_active_preset");
 
 export const createPreset = (name: string, description?: string, icon?: string) =>
   invoke<Preset>("create_preset", {
